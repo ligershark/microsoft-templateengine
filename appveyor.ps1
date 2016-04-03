@@ -47,13 +47,13 @@ foreach($installUrl in $installUrlList){
                     . $buildFile.FullName -dotnetInstallChannel $channel -dotnetNugetFeedSource $feed -SkipInstallDotNet -onlyBuildDOtnetProjects
                 }
                 catch{
-                    ( 'Build error {0} {1}' -f $_.Exception, (Get-PSCallStack|Out-String) ) | Write-Error
+                    ( 'Build error {0} {1}' -f $_.Exception, (Get-PSCallStack|Out-String) ) | Write-Warning
                 }
             }
         }
     }
     catch{
-        'Unable to install from url [{0}]' -f $installUrlList | Write-Error
+        'Unable to install from url [{0}]' -f $installUrlList | Write-Warning
     }
 }
 

@@ -283,7 +283,7 @@ function BuildSolution{
         try{
             foreach($pj in $projectJsonToBuild){
                 Set-Location $pj.DirectoryName
-                $restoreArgs = ('restore','-s',$dotnetNugetFeedSource)
+                $restoreArgs = ('restore')
 
                 if(-not ([string]::IsNullOrWhiteSpace($dotnetNugetFeedSource))){
                     $restoreArgs += ('-s',$dotnetNugetFeedSource)

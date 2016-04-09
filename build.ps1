@@ -589,10 +589,11 @@ function FullBuild{
         Update-FilesWithCommitId
         
         try{
-            Run-Tests
+            Run-Tests -ErrorAction Continue
         }
         catch{
-            $_.Exception | Write-Warning
+            $_.Exception | Write-Output
+            $publishToNuget = $false
         }
         
         Build-NuGetPackage

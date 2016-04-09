@@ -607,7 +607,9 @@ function FullBuild{
             Run-Tests -ErrorAction Continue
         }
         catch{
+            '**********************************************' | Write-Output
             $_.Exception | Write-Output
+            '**********************************************' | Write-Output
             $publishToNuget = $false
         }
         

@@ -46,7 +46,7 @@ $scriptDir = split-path -parent $MyInvocation.MyCommand.Definition
 [System.IO.DirectoryInfo]$outputroot=(join-path $scriptDir 'OutputRoot')
 [System.IO.DirectoryInfo]$outputPathNuget = (Join-Path $outputroot '_nuget-pkg')
 [string]$localNugetFolder = 'c:\temp\nuget\local'
-[string]$testFilePattern ='*test*.dll'
+[string]$testFilePattern ='*mutant*test*.dll'
 
 <#
 .SYNOPSIS

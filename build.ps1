@@ -509,14 +509,10 @@ function Run-Tests{
         }
 
         $testArgs += ('/Framework:{0}' -f $frameworkValue)
-
-        if(-not (Test-Path $testResultsDir)){
-            New-Item -Path $testResultsDir -ItemType Directory | Write-Verbose
-        }
-
+        
         Push-Location
         try{
-            Set-Location $testResultsDir
+            Set-Location (Split-Path $testResultsDir -Parent)
             Invoke-CommandString -command $vstestexe -commandArgs $testArgs -ignoreErrors $true
         }
         finally{
@@ -604,7 +600,7 @@ function FullBuild{
         Update-FilesWithCommitId
         
         try{
-            Run-Tests -ErrorAction Continue
+            Run-Tests
         }
         catch{
             '**********************************************' | Write-Output
@@ -613,6 +609,7 @@ function FullBuild{
             $publishToNuget = $false
         }
         
+        'Building NuGet package' | Write-Output
         Build-NuGetPackage
 
         if($publishToNuget){

@@ -502,7 +502,7 @@ function Run-Tests{
         Push-Location
         try{
             Set-Location $testResultsDir
-            Invoke-CommandString -command $vstestexe -commandArgs $testArgs -ignoreErrors
+            Invoke-CommandString -command $vstestexe -commandArgs $testArgs -ignoreErrors $true
         }
         finally{
             Pop-Location
@@ -536,7 +536,7 @@ function GetCoverageRepot{
             $cloverreportpath = (Join-Path $coveragefile.Directory.FullName "$coveragefile.BaseName.report.xml.clover")
 
             $coverArgs = @($coveragefile.FullName,'--html',$htmlreportpath,'-clover',$cloverreportpath)
-            Invoke-CommandString -command $vscoveragexe -commandArgs $coverArgs -ignoreErrors
+            Invoke-CommandString -command $vscoveragexe -commandArgs $coverArgs -ignoreErrors $true
 
             if(Test-Path $htmlreportpath){
                 Add-AppveyorArtifact -pathToAdd $htmlreportpath

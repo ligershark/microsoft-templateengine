@@ -45,7 +45,8 @@ $scriptDir = split-path -parent $MyInvocation.MyCommand.Definition
 [System.IO.FileInfo[]]$projectJsonToBuild = (Join-Path $scriptDir 'src\Mutant.Chicken\project.json')
 [System.IO.DirectoryInfo]$outputroot=(join-path $scriptDir 'OutputRoot')
 [System.IO.DirectoryInfo]$outputPathNuget = (Join-Path $outputroot '_nuget-pkg')
-$localNugetFolder = 'c:\temp\nuget\local'
+[string]$localNugetFolder = 'c:\temp\nuget\local'
+[string]$testFilePattern ='*test*.dll'
 
 <#
 .SYNOPSIS
@@ -393,6 +394,180 @@ function SetVersion{
     }
 }
 
+# test related functions
+
+function GetVsTestConsole{
+    [cmdletbinding()]
+    param(
+        [string]$visualStudioVersion='14.0'
+    )
+    process{
+        $vstest = "${env:ProgramFiles(x86)}\Microsoft Visual Studio $visualStudioVersion\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe"
+        if(-not (Test-Path $vstest)){
+            throw ('vstest runner not found at [{0}]' -f $vstest)
+        }
+
+        $vstest
+    }
+}
+
+function GetVsCoverageExe{
+    [cmdletbinding()]
+    param(
+        [string]$tempDir = ("$env:LOCALAPPDATA\LigerShark\PSBuild\tools\testcoverage"),
+        [string]$downloadUrl = 'https://dl.dropboxusercontent.com/u/40134810/psbuild/tools/visualcoverage-bin.zip'
+
+    )
+    process{
+        if(-not (Test-Path $tempDir)){
+            New-Item -Path $tempDir -ItemType Directory | Write-Verbose
+        }
+
+        # see if the .exe is already there
+        $coverageExePath = (Join-Path $tempDir 'VisualCoverage.exe')
+
+        if(-not (Test-Path $coverageExePath)){
+            # download and extract the zip file
+            # (new-object net.webclient).DownloadFile($dotnetInstallUrl,$tempfile)
+            $zipFileDest = (Join-Path $tempDir 'visualcoverage-bin.zip')
+            if(Test-Path $zipFileDest){
+                Remove-Item $zipFileDest | Write-Verbose
+            }
+
+            (new-object net.webclient).DownloadFile($downloadUrl,$zipFileDest) | Write-Verbose
+
+            if(-not (Test-Path $zipFileDest)){
+                throw ('Unable to download file from [{0}] to [{1}]' -f $downloadUrl,$zipFileDest)
+            }
+
+            # extract it
+            Add-Type -assembly 'system.io.compression.filesystem' | Out-Null
+            [io.compression.zipfile]::ExtractToDirectory($zipFileDest, $tempDir) | Write-Verbose
+        }
+
+        if(-not (Test-Path $coverageExePath)){
+            throw ('Unable to find/download visualcoverage at [{0}]' -f $coverageExePath)
+        }
+
+        # return the path
+        $coverageExePath
+    }
+}
+
+function Run-Tests{
+    [cmdletbinding()]
+    param(
+        [switch]$disableCodeCoverage,
+        [switch]$disableInIsolation,
+        [switch]$disableTrx,
+        [string]$frameworkValue = 'Framework45',
+        [string]$testResultsDir = (Join-Path $outputroot.FullName "vs\TestResults")
+    )
+    process{
+        $vsoutroot = (Join-Path $outputroot 'vs')
+        $testdlls = Get-ChildItem $vsoutroot $testFilePattern -Recurse -File
+
+        if( ($testdlls -eq $null ) -or ($testdlls.Length -le 0)){
+            'No tests .dlls files found [{0}] with pattern [{1}]' -f $vsoutroot,$testFilePattern | Write-Warning
+            return
+        }
+
+        $vstestexe = GetVsTestConsole
+
+        # vstest Mutant.Chicken.Net4.UnitTests.dll  /EnableCodeCoverage /InIsolation /Framework:Framework45 /logger:trx
+        $testArgs = @()
+        
+        $testdlls.FullName|ForEach-Object {
+            $testArgs += $_
+        }
+
+        if(-not $disableCodeCoverage){
+            $testArgs += '/EnableCodeCoverage'
+        }
+
+        if(-not $disableInIsolation){
+            $testArgs += '/InIsolation'
+        }
+
+        if(-not $disableTrx){
+            $testArgs += '/logger:trx'
+        }
+
+        $testArgs += ('/Framework:{0}' -f $frameworkValue)
+
+        if(-not (Test-Path $testResultsDir)){
+            New-Item -Path $testResultsDir -ItemType Directory | Write-Verbose
+        }
+
+        Push-Location
+        try{
+            Set-Location $testResultsDir
+            Invoke-CommandString -command $vstestexe -commandArgs $testArgs
+        }
+        finally{
+            Pop-Location
+        }
+    }
+}
+
+function GetCoverageRepot{
+    [cmdletbinding()]
+    param(
+        [string]$testResultsDir = (Join-Path $outputroot.FullName "vs\TestResults")
+    )
+    process{
+        if(-not (Test-Path $testResultsDir)){
+            return
+        }
+
+        $coverageFiles = Get-ChildItem $testResultsDir *.coverage -Recurse -File
+        if( ($coverageFiles -eq $null) -or ($coverageFiles.Length -le 0)){
+            'No .coverage files found in [{0}]' -f $testResultsDir | Write-Warning
+            return
+        }
+
+        $vscoveragexe = GetVsCoverageExe
+        # vscoverage -i '.\Sayed_IBR-PC2 2016-04-09 09_27_21.coverage' --clover foo.clover
+        foreach($coveragefile in $coverageFiles){
+            $coveragefile =[System.IO.FileInfo]$coveragefile
+            Add-AppveyorArtifact -pathToAdd $coveragefile.FullName
+
+            $htmlreportpath = (Join-Path $coveragefile.Directory.FullName "$coveragefile.BaseName.report.html")
+            $cloverreportpath = (Join-Path $coveragefile.Directory.FullName "$coveragefile.BaseName.report.xml.clover")
+
+            $coverArgs = @($coveragefile.FullName,'--html',$htmlreportpath,'-clover',$cloverreportpath)
+            Invoke-CommandString -command $vscoveragexe -commandArgs $coverArgs
+
+            if(Test-Path $htmlreportpath){
+                Add-AppveyorArtifact -pathToAdd $htmlreportpath
+            }
+            if(Test-Path $cloverreportpath){
+                Add-AppveyorArtifact -pathToAdd $cloverreportpath
+            }
+        }
+    }
+}
+
+function Add-AppveyorArtifact{
+    [cmdletbinding()]
+    param(
+        [string[]]$pathToAdd
+    )
+    process{
+        $pushartifactcommand = (get-command 'Push-AppveyorArtifact' -ErrorAction SilentlyContinue)
+        if($pushartifactcommand -ne $null){
+            foreach($artifactPath in $pathToAdd){           
+                try{
+                    Push-AppveyorArtifact $artifactPath
+                }
+                catch{
+                    'Unable to add appveyor artifact [{0}]. Error [{1}]' -f $artifactPath,$_.Exception | Write-Warning
+                }    
+            }
+        }
+    }
+}
+
 function FullBuild{
     [cmdletbinding()]
     param()
@@ -412,6 +587,7 @@ function FullBuild{
 
         BuildSolution
         Update-FilesWithCommitId
+        Run-Tests
         Build-NuGetPackage
 
         if($publishToNuget){

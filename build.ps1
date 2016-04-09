@@ -587,7 +587,14 @@ function FullBuild{
 
         BuildSolution
         Update-FilesWithCommitId
-        Run-Tests
+        
+        try{
+            Run-Tests
+        }
+        catch{
+            $_.Exception | Write-Warning
+        }
+        
         Build-NuGetPackage
 
         if($publishToNuget){

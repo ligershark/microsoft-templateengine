@@ -8,10 +8,6 @@ environment:
 build_script:
   - ps: .\appveyor.ps1
 
-test:
-  assemblies:
-    - OutputRoot\vs\*Tests.dll
-
 artifacts:
   - path: OutputRoot\vs\Mutant*
   - path: OutputRoot\dotnet\Mutant*

@@ -293,6 +293,21 @@ function BuildSolution{
                 Invoke-CommandString -command dotnet -commandArgs $restoreArgs
                 $buildargs = @('build','--configuration', $configuration,  '--build-base-path', $dnoutputpath.FullName, ' --no-incremental')
                 Invoke-CommandString -command dotnet -commandArgs $buildargs
+
+                # copy build results to output folder
+                # \OutputRoot\dotnet\Mutant.Chicken\bin\Release
+                # Join-Path c:\temp one|join-path -ChildPath two|join-path -ChildPath three
+                $buildBinFolder = (Join-Path $dnoutputpath -ChildPath 'Mutant.Chicken'|Join-Path -ChildPath 'bin'|Join-Path -ChildPath $configuration)
+                if( (-not [string]::IsNullOrWhiteSpace($buildBinFolder)) -and (Test-Path $buildBinFolder)){
+                    # copy the folder to
+                    Get-ChildItem $buildBinFolder | ForEach-Object{
+                        Copy-Item $_.FullName -Destination $dnoutputpath -Recurse
+                    }
+                }
+                else{
+                    'bin folder not found for Mutant.Chicken at [{0}]' -f $buildBinFolder | Write-Warning
+                }
+
             }
         }
         finally{

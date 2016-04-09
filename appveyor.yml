@@ -10,7 +10,7 @@ build_script:
 
 test:
   assemblies:
-    - OutputRoot\*tests*.dll
+    - OutputRoot\vs\*Tests.dll
 
 artifacts:
   - path: OutputRoot\vs\Mutant*

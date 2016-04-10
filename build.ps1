@@ -508,6 +508,10 @@ function Run-Tests{
             $testArgs += '/logger:trx'
         }
 
+        if($env:APPVEYOR -eq 'true'){
+            $testArgs += '/logger:Appveyor'
+        }
+
         $testArgs += ('/Framework:{0}' -f $frameworkValue)
         
         Push-Location
@@ -543,10 +547,11 @@ function GetCoverageRepot{
             $coveragefile =[System.IO.FileInfo]$coveragefile
             Add-AppveyorArtifact -pathToAdd $coveragefile.FullName
 
-            $htmlreportpath = (Join-Path $coveragefile.Directory.FullName "$coveragefile.BaseName.report.html")
-            $cloverreportpath = (Join-Path $coveragefile.Directory.FullName "$coveragefile.BaseName.report.xml.clover")
+            $htmlreportpath =(Join-Path $coveragefile.Directory.FullName ('{0}.report.html' -f $coveragefile.BaseName))
+            $cloverreportpath =(Join-Path $coveragefile.Directory.FullName ('{0}.report.xml.clover' -f $coveragefile.BaseName))
 
-            $coverArgs = @($coveragefile.FullName,'--html',$htmlreportpath,'-clover',$cloverreportpath)
+            $coverArgs = @('-i',('"{0}"' -f $coveragefile.FullName),'--html',"""$htmlreportpath""",'--clover',"""$cloverreportpath""")
+
             Invoke-CommandString -command $vscoveragexe -commandArgs $coverArgs -ignoreErrors $true
 
             if(Test-Path $htmlreportpath){
@@ -555,6 +560,9 @@ function GetCoverageRepot{
             if(Test-Path $cloverreportpath){
                 Add-AppveyorArtifact -pathToAdd $cloverreportpath
             }
+
+            # return the xml path in case someone want's to consume it
+            $cloverreportpath
         }
     }
 }
@@ -601,6 +609,7 @@ function FullBuild{
         
         try{
             Run-Tests
+            GetCoverageRepot
         }
         catch{
             '**********************************************' | Write-Output

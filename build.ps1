@@ -1,7 +1,7 @@
 [cmdletbinding(DefaultParameterSetName='build')]
 param(
     [Parameter(ParameterSetName='build',Position=0)]
-    [string]$configuration = 'Release',
+    [string]$configuration = 'Debug',
 
     [Parameter(ParameterSetName='build',Position=1)]
     [switch]$SkipInstallDotNet,

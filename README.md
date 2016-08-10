@@ -95,10 +95,9 @@ Creates a shortcut (t1 in the example) for a template, after creating an alias, 
     dotnet new3 MvcWebTemplate -a t1
 
 #Roadmap
+* Short term work tracked as #67
 * Integration packs for each of the Waffles
  * Given that the Waffles are already widely used, integration packs for each of the Waffles will be provided here so that no substantial changes will be required to use Template Engine
-* Aliases that embed template parameters
 * Easy setup for platforms other than Windows
-* Cascading configuration
 * Additional Operations
  * Suggestions welcome!

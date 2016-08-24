@@ -13,8 +13,9 @@ namespace Microsoft.TemplateEngine.Core
         private readonly bool _toggle;
         private readonly bool _wholeLine;
         private readonly bool _trimWhitespace;
+        private readonly string _id;
 
-        public Region(string start, string end, bool include, bool wholeLine, bool trimWhitespace)
+        public Region(string start, string end, bool include, bool wholeLine, bool trimWhitespace, string id)
         {
             _wholeLine = wholeLine;
             _trimWhitespace = trimWhitespace;
@@ -22,13 +23,14 @@ namespace Microsoft.TemplateEngine.Core
             _end = end;
             _include = include;
             _toggle = _start == _end;
+            _id = id;
         }
 
         public IOperation GetOperation(Encoding encoding, IProcessorState processorState)
         {
             byte[] startToken = encoding.GetBytes(_start);
             byte[] endToken = encoding.GetBytes(_end);
-            return new Impl(this, startToken, endToken, _include, _toggle);
+            return new Impl(this, startToken, endToken, _include, _toggle, _id);
         }
 
         private class Impl : IOperation
@@ -38,8 +40,9 @@ namespace Microsoft.TemplateEngine.Core
             private readonly bool _startAndEndAreSame;
             private bool _waitingForEnd;
             private readonly Region _definition;
+            private readonly string _id;
 
-            public Impl(Region owner, byte[] startToken, byte[] endToken, bool include, bool toggle)
+            public Impl(Region owner, byte[] startToken, byte[] endToken, bool include, bool toggle, string id)
             {
                 _definition = owner;
                 _endToken = endToken;
@@ -47,9 +50,12 @@ namespace Microsoft.TemplateEngine.Core
                 _startAndEndAreSame = toggle;
 
                 Tokens = toggle ? new[] {startToken} : new[] {startToken, endToken};
+                _id = id;
             }
 
             public IReadOnlyList<byte[]> Tokens { get; }
+
+            public string Id => _id;
 
             public int HandleMatch(IProcessorState processor, int bufferLength, ref int currentBufferPosition, int token, Stream target)
             {

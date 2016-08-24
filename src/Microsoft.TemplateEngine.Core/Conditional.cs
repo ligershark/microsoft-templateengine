@@ -1,9 +1,10 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.TemplateEngine.Abstractions.Engine;
-using System;
-using System.Runtime.CompilerServices;
 
 namespace Microsoft.TemplateEngine.Core
 {
@@ -12,17 +13,8 @@ namespace Microsoft.TemplateEngine.Core
         private readonly ConditionEvaluator _evaluator;
         private readonly bool _wholeLine;
         private readonly bool _trimWhitespace;
-
-        private readonly IList<string> _ifTokens = new List<string>();
-        private readonly IList<string> _elseIfTokens = new List<string>();
-        private readonly IList<string> _elseTokens = new List<string>();
-        private readonly IList<string> _endIfTokens = new List<string>();
-
-        private readonly IList<string> _ifTokensActionable = new List<string>();
-        private readonly IList<string> _elseIfTokensActionable = new List<string>();
-        private readonly IList<string> _elseTokensActionable = new List<string>();
-
-        private readonly IList<string> _actionableOnlyTokens = new List<string>();
+        private readonly ConditionalTokens _tokens;
+        private readonly string _id;
 
         // the unusual order of these is historical, no special meaning
         // if actual_token_index % 10 == baseTokenIndex
@@ -40,101 +32,21 @@ namespace Microsoft.TemplateEngine.Core
         // must be > the highest token type index
         private const int TokenTypeModulus = 10;
 
-        // The other operations to toggle when the actionable tokens get handled
-        // They're disabled during initial setup of conditional.
-        // When the actionable token start is encountered, these are enabled.
-        // When the actionable token end is encountered, they're disabled.
-        //  it gets a bit more complex with embedded actionables.
-        private readonly IList<int> _actionableOperations;
-
         public bool WholeLine => _wholeLine;
 
         public bool TrimWhitespace => _trimWhitespace;
 
         public ConditionEvaluator Evaluator => _evaluator;
 
-        // standard versions of the tokens.
-        public IList<string> IfTokens => _ifTokens;
+        public ConditionalTokens Tokens => _tokens;
 
-        public IList<string> ElseIfTokens => _elseIfTokens;
-
-        public IList<string> ElseTokens => _elseTokens;
-
-        public IList<string> EndIfTokens => _endIfTokens;
-
-        // for comment / uncomment handling
-        public IList<string> IfTokensActionable => _ifTokensActionable;
-
-        public IList<string> ElseTokensActionable => _elseTokensActionable;
-
-        public IList<string> ElseIfTokensActionable => _elseIfTokensActionable;
-
-        // lists of regular conditionals
-        // no special conditionals
-        public Conditional(IEnumerable<string> ifTokens, IEnumerable<string> elseTokens, IEnumerable<string> elseIfTokens, IEnumerable<string> endIfTokens,
-                bool wholeLine, bool trimWhitespace, ConditionEvaluator evaluator)
-            :this(ifTokens, elseTokens, elseIfTokens, endIfTokens, wholeLine, trimWhitespace, evaluator, new List<string>(), new List<string>(), new List<string>(), new List<int>())
-        {
-        }
-
-        // lists of regular conditionals
-        // lists of specials conditionals
-        // single operation to toggle
-        public Conditional(IEnumerable<string> ifTokens, IEnumerable<string> elseTokens, IEnumerable<string> elseIfTokens, IEnumerable<string> endIfTokens,
-            bool wholeLine, bool trimWhitespace, ConditionEvaluator evaluator,
-            IEnumerable<string> ifTokensActionable, IEnumerable<string> elseTokensActionable, IEnumerable<string> elseIfTokensActionable, IList<int> actionableOperations)
+        public Conditional(ConditionalTokens tokenVariants, bool wholeLine, bool trimWhitespace, ConditionEvaluator evaluator, string id)
         {
             _trimWhitespace = trimWhitespace;
             _wholeLine = wholeLine;
             _evaluator = evaluator;
-
-            _ifTokens = new List<string>(ifTokens);
-            _elseTokens = new List<string>(elseTokens);
-            _elseIfTokens = new List<string>(elseIfTokens);
-            _endIfTokens = new List<string>(endIfTokens);
-            _ifTokensActionable = new List<string>(ifTokensActionable);
-            _elseTokensActionable = new List<string>(elseTokensActionable);
-            _elseIfTokensActionable = new List<string>(elseIfTokensActionable);
-
-            _actionableOperations = actionableOperations;
-        }
-
-        // Probably need to hold onto these original constructors for backwards compatibility as this is developed.
-        //
-        // single regular conditionals
-        // no special conditionals
-        public Conditional(string ifToken, string elseToken, string elseIfToken, string endIfToken, bool wholeLine, bool trimWhitespace, ConditionEvaluator evaluator)
-            : this(new List<string>() { ifToken },
-                  new List<string>() { elseToken },
-                  new List<string>() { elseIfToken },
-                  new List<string>() { endIfToken },
-                  wholeLine,
-                  trimWhitespace,
-                  evaluator,
-                  new List<string>(),
-                  new List<string>(),
-                  new List<string>(),
-                  new List<int>())
-        {
-        }
-
-        // single regular conditionals
-        // single special conditionals
-        // single operation to toggle
-        public Conditional(string ifToken, string elseToken, string elseIfToken, string endIfToken, bool wholeLine, bool trimWhitespace, ConditionEvaluator evaluator,
-            string ifTokenActionable, string elseTokenActionable, string elseIfTokenActionable, IList<int> actionableOperations)
-            : this(new List<string>() { ifToken },
-                  new List<string>() { elseToken },
-                  new List<string>() { elseIfToken },
-                  new List<string>() { endIfToken },
-                  wholeLine,
-                  trimWhitespace,
-                  evaluator,
-                  new List<string>() { ifTokenActionable },
-                  new List<string>() { elseTokenActionable },
-                  new List<string>() { elseIfTokenActionable },
-                  actionableOperations)
-        {
+            _tokens = tokenVariants;
+            _id = id;
         }
 
         /// <summary>
@@ -144,12 +56,12 @@ namespace Microsoft.TemplateEngine.Core
         {
             get
             {
-                int maxListSize = Math.Max(_ifTokens.Count, _elseTokens.Count);
-                maxListSize = Math.Max(maxListSize, _elseIfTokens.Count);
-                maxListSize = Math.Max(maxListSize, _endIfTokens.Count);
-                maxListSize = Math.Max(maxListSize, _ifTokensActionable.Count);
-                maxListSize = Math.Max(maxListSize, _elseTokensActionable.Count);
-                maxListSize = Math.Max(maxListSize, _elseIfTokensActionable.Count);
+                int maxListSize = Math.Max(Tokens.IfTokens.Count, Tokens.ElseTokens.Count);
+                maxListSize = Math.Max(maxListSize, Tokens.ElseIfTokens.Count);
+                maxListSize = Math.Max(maxListSize, Tokens.EndIfTokens.Count);
+                maxListSize = Math.Max(maxListSize, Tokens.ActionableIfTokens.Count);
+                maxListSize = Math.Max(maxListSize, Tokens.ActionableElseTokens.Count);
+                maxListSize = Math.Max(maxListSize, Tokens.ActionableElseIfTokens.Count);
 
                 return maxListSize;
             }
@@ -165,22 +77,15 @@ namespace Microsoft.TemplateEngine.Core
                 tokens.Add(null);
             }
 
-            AddTokensOfTypeToTokenListAndTrie(trie, tokens, _ifTokens, IfTokenBaseIndex, encoding);
-            AddTokensOfTypeToTokenListAndTrie(trie, tokens, _elseTokens, ElseTokenBaseIndex, encoding);
-            AddTokensOfTypeToTokenListAndTrie(trie, tokens, _elseIfTokens, ElseIfTokenBaseIndex, encoding);
-            AddTokensOfTypeToTokenListAndTrie(trie, tokens, _endIfTokens, EndTokenBaseIndex, encoding);
-            AddTokensOfTypeToTokenListAndTrie(trie, tokens, _ifTokensActionable, IfTokenActionableBaseIndex, encoding);
-            AddTokensOfTypeToTokenListAndTrie(trie, tokens, _elseTokensActionable, ElseTokenActionableBaseIndex, encoding);
-            AddTokensOfTypeToTokenListAndTrie(trie, tokens, _elseIfTokensActionable, ElseIfTokenActionableBaseIndex, encoding);
+            AddTokensOfTypeToTokenListAndTrie(trie, tokens, Tokens.IfTokens, IfTokenBaseIndex, encoding);
+            AddTokensOfTypeToTokenListAndTrie(trie, tokens, Tokens.ElseTokens, ElseTokenBaseIndex, encoding);
+            AddTokensOfTypeToTokenListAndTrie(trie, tokens, Tokens.ElseIfTokens, ElseIfTokenBaseIndex, encoding);
+            AddTokensOfTypeToTokenListAndTrie(trie, tokens, Tokens.EndIfTokens, EndTokenBaseIndex, encoding);
+            AddTokensOfTypeToTokenListAndTrie(trie, tokens, Tokens.ActionableIfTokens, IfTokenActionableBaseIndex, encoding);
+            AddTokensOfTypeToTokenListAndTrie(trie, tokens, Tokens.ActionableElseTokens, ElseTokenActionableBaseIndex, encoding);
+            AddTokensOfTypeToTokenListAndTrie(trie, tokens, Tokens.ActionableElseIfTokens, ElseIfTokenActionableBaseIndex, encoding);
 
-            // disable the actionable operations if there are any
-            foreach (int operationId in _actionableOperations)
-            {
-                string otherOptionDisableFlag = processorState.Config.OperationIdFlag(operationId);
-                processorState.Config.Flags.Add(otherOptionDisableFlag, false);
-            }
-
-            return new Impl(this, tokens, trie);
+            return new Impl(this, tokens, trie, _id);
         }
 
         /// <summary>
@@ -191,7 +96,7 @@ namespace Microsoft.TemplateEngine.Core
         /// <param name="tokensOfType"></param>
         /// <param name="typeRemainder"></param>
         /// <param name="encoding"></param>
-        private void AddTokensOfTypeToTokenListAndTrie(TokenTrie trie, List<byte[]> tokenMasterList, IList<string> tokensOfType, int typeRemainder, Encoding encoding)
+        private void AddTokensOfTypeToTokenListAndTrie(TokenTrie trie, List<byte[]> tokenMasterList, IReadOnlyList<string> tokensOfType, int typeRemainder, Encoding encoding)
         {
             int tokenIndex = typeRemainder;
 
@@ -223,13 +128,17 @@ namespace Microsoft.TemplateEngine.Core
             private EvaluationState _current;
             private readonly Stack<EvaluationState> _pendingCompletion = new Stack<EvaluationState>();
             private readonly TokenTrie _trie;
+            private readonly string _id;
 
-            public Impl(Conditional definition, IReadOnlyList<byte[]> tokens, TokenTrie trie)
+            public Impl(Conditional definition, IReadOnlyList<byte[]> tokens, TokenTrie trie, string id)
             {
                 _trie = trie;
                 _definition = definition;
                 Tokens = tokens;
+                _id = id;
             }
+
+            public string Id => _id;
 
             public IReadOnlyList<byte[]> Tokens { get; }
 
@@ -281,21 +190,22 @@ namespace Microsoft.TemplateEngine.Core
                         }
 
                         if (IsTokenIndexOfType(token, IfTokenActionableBaseIndex))
-                        {   // "Actionable" if token, so enable the flag operation
+                        {   // "Actionable" if token, so enable the flag operation(s)
                             _current.ToggleActionableOperations(true, processor);
                         }
 
-                        // this is an endif return ???
+                        // if (true_condition) was found.
                         return 0;
                     }
                     else
                     {
+                        // if (false_condition) was found. Skip to the next token of the if-elseif-elseif-...elseif-else-endif
                         SeekToNextTokenAtSameLevel(processor, ref bufferLength, ref currentBufferPosition, out token);
                         goto BEGIN;
                     }
                 }
 
-                //If we've got an unbalanced statement, emit the token
+                // If we've got an unbalanced statement, emit the token
                 if (_current == null)
                 {
                     byte[] tokenValue = Tokens[token];
@@ -313,7 +223,7 @@ namespace Microsoft.TemplateEngine.Core
                     }
                     else
                     {
-                        // disable the special case operation (note: it may already be disabled, but cheaper to do than check)
+                        // disable the special case operations (note: they may already be disabled, but cheaper to do than check)
                         _current.ToggleActionableOperations(false, processor);
                         _current = null;
                     }
@@ -397,7 +307,8 @@ namespace Microsoft.TemplateEngine.Core
                 }
                 else
                 {
-                    throw new InvalidDataException("Unknown token index: " + token);
+                    Debug.Assert(true, "Unknown token index: " + token);
+                    return 0;   // TODO: revisit. Not sure what's best here.
                 }
             }
 
@@ -452,12 +363,6 @@ namespace Microsoft.TemplateEngine.Core
                     }
 
                     seekSucceeded &= SeekToToken(processor, ref bufferLength, ref currentBufferPosition, out token);
-                }
-
-                // temporary for debugging.
-                if (! seekSucceeded)
-                {
-                    Console.WriteLine("seek to token failed in SeekToNextBalancedToken()");
                 }
 
                 // this may be irrelevant. If it happens, the template is malformed (i think)
@@ -523,18 +428,9 @@ namespace Microsoft.TemplateEngine.Core
                 {
                     ActionableOperationsEnabled = enabled;
 
-                    foreach (int operationId in _impl._definition._actionableOperations)
+                    foreach (string otherOptionDisableFlag in _impl._definition.Tokens.ActionableOperations)
                     {
-                        string otherOptionDisableFlag = processor.Config.OperationIdFlag(operationId);
-
-                        if (!processor.Config.Flags.ContainsKey(otherOptionDisableFlag))
-                        {
-                            processor.Config.Flags.Add(otherOptionDisableFlag, enabled);
-                        }
-                        else
-                        {
-                            processor.Config.Flags[otherOptionDisableFlag] = enabled;
-                        }
+                        processor.Config.Flags[otherOptionDisableFlag] = enabled;
                     }
                 }
             }

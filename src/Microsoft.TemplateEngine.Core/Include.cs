@@ -8,11 +8,12 @@ namespace Microsoft.TemplateEngine.Core
 {
     public class Include : IOperationProvider
     {
-        public Include(string startToken, string endToken, Func<string, Stream> sourceStreamOpener)
+        public Include(string startToken, string endToken, Func<string, Stream> sourceStreamOpener, string id)
         {
             SourceStreamOpener = sourceStreamOpener;
             StartToken = startToken;
             EndToken = endToken;
+            _id = id;
         }
 
         public string EndToken { get; }
@@ -21,28 +22,34 @@ namespace Microsoft.TemplateEngine.Core
 
         public Func<string, Stream> SourceStreamOpener { get; }
 
+        private readonly string _id;
+
         public IOperation GetOperation(Encoding encoding, IProcessorState processorState)
         {
             byte[] tokenBytes = encoding.GetBytes(StartToken);
             byte[] endTokenBytes = encoding.GetBytes(EndToken);
             TokenTrie endTokenMatcher = new TokenTrie();
             endTokenMatcher.AddToken(endTokenBytes);
-            return new Impl(tokenBytes, endTokenMatcher, this);
+            return new Impl(tokenBytes, endTokenMatcher, this, _id);
         }
 
         private class Impl : IOperation
         {
             private readonly Include _source;
             private readonly TokenTrie _endTokenMatcher;
+            private readonly string _id;
 
-            public Impl(byte[] token, TokenTrie endTokenMatcher, Include source)
+            public Impl(byte[] token, TokenTrie endTokenMatcher, Include source, string id)
             {
                 Tokens = new[] {token};
                 _source = source;
                 _endTokenMatcher = endTokenMatcher;
+                _id = id;
             }
 
             public IReadOnlyList<byte[]> Tokens { get; }
+
+            public string Id => _id;
 
             public int HandleMatch(IProcessorState processor, int bufferLength, ref int currentBufferPosition, int token, Stream target)
             {

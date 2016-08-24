@@ -162,9 +162,17 @@ namespace Microsoft.TemplateEngine.Core
                 }
 
                 IOperation op = _trie.GetOperation(CurrentBuffer, CurrentBufferLength, ref posedPosition, out token);
+                bool opEnabledFlag;
 
-                if (op != null)
+                if ((op != null) 
+                        && ((op.Id == null)
+                            || (Config.Flags.TryGetValue(op.Id, out opEnabledFlag) && opEnabledFlag))
+                    )
                 {
+                    // The operation will be processed because one of these conditions are met:
+                    // - The operation doesn't have an id (thus can't be disabled)
+                    // - The flag for the Id exists and is true.
+
                     int writeCount = CurrentBufferPosition - lastWritten;
 
                     if (writeCount > 0)
@@ -179,7 +187,7 @@ namespace Microsoft.TemplateEngine.Core
                     {
                         writtenSinceFlush += op.HandleMatch(this, CurrentBufferLength, ref posedPosition, token, _target);
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         throw new Exception($"Error running handler {op} at position {CurrentBufferPosition} in {Encoding.EncodingName} bytes of {Encoding.GetString(CurrentBuffer, 0, CurrentBufferLength)}.\n\nStart: {Encoding.GetString(CurrentBuffer, CurrentBufferPosition, CurrentBufferLength - CurrentBufferPosition)} \n\nCheck InnerException for details.", ex);
                     }
@@ -190,6 +198,7 @@ namespace Microsoft.TemplateEngine.Core
                 }
                 else
                 {
+                    // If the operation is diabled, it's as if the token were just arbitrary text, so do nothing special with it.
                     ++CurrentBufferPosition;
                 }
 

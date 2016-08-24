@@ -83,9 +83,22 @@ namespace Microsoft.TemplateEngine.Orchestrator.VsTemplates
 
         public IReadOnlyList<IOperationProvider> Operations => new List<IOperationProvider>
         {
-            new ExpandVariables(),
-            new Conditional("$if$", "$else$", "$elseif$", "$endif$", false, false, CppStyleEvaluatorDefinition.CppStyleEvaluator)
+            new ExpandVariables(null),
+            new Conditional(TokenVariants, false, false, CppStyleEvaluatorDefinition.CppStyleEvaluator, null)
         };
+
+        private static ConditionalTokens TokenVariants
+        {
+            get
+            {
+                ConditionalTokens tokenVariants = new ConditionalTokens();
+                tokenVariants.IfTokens = new[] { "$if$" };
+                tokenVariants.ElseTokens = new[] { "$else$" };
+                tokenVariants.ElseIfTokens = new[] { "$elseif$" };
+                tokenVariants.EndIfTokens = new[] { "$endif$" };
+                return tokenVariants;
+            }
+        }
 
         public IVariableCollection RootVariableCollection { get; }
 
